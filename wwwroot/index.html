@@ -1,0 +1,411 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DWG File Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .file-list {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 30px;
+        }
+
+        .file-list h2 {
+            color: #333;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .file-item {
+            background: white;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.2);
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: #333;
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+
+        .file-details {
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .view-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: transform 0.2s;
+        }
+
+        .view-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .viewer-container {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+            min-height: 500px;
+            display: none;
+        }
+
+        .viewer-container.active {
+            display: block;
+        }
+
+        .viewer-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #dee2e6;
+        }
+
+        .viewer-title {
+            font-size: 1.3em;
+            font-weight: 600;
+            color: #333;
+        }
+
+        .close-btn {
+            background: #dc3545;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        .viewer-content {
+            background: white;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .dwg-info {
+            background: #e7f3ff;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+
+        .dwg-info h3 {
+            color: #1976D2;
+            margin-bottom: 10px;
+        }
+
+        .dwg-info p {
+            color: #555;
+            line-height: 1.6;
+        }
+
+        .download-link {
+            display: inline-block;
+            background: #28a745;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 6px;
+            text-decoration: none;
+            margin-top: 15px;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .download-link:hover {
+            background: #218838;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 4px solid #dc3545;
+            margin: 20px 0;
+        }
+
+        .preview-container {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            height: auto;
+            border: 2px solid #dee2e6;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            background: white;
+            padding: 10px;
+        }
+
+        .preview-image:hover {
+            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+            transform: scale(1.01);
+            transition: all 0.3s ease;
+        }
+
+        .zoom-controls {
+            margin-top: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .zoom-btn {
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background 0.3s;
+        }
+
+        .zoom-btn:hover {
+            background: #5568d3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>📐 DWG File Viewer</h1>
+            <p>View and manage your AutoCAD drawing files</p>
+        </div>
+        
+        <div class="content">
+            <div class="file-list">
+                <h2>Available DWG Files</h2>
+                <div id="fileListContainer">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading files...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="viewerContainer" class="viewer-container">
+                <div class="viewer-header">
+                    <div class="viewer-title" id="viewerTitle">DWG File Viewer</div>
+                    <button class="close-btn" onclick="closeViewer()">Close Viewer</button>
+                </div>
+                <div class="viewer-content" id="viewerContent">
+                    <!-- Viewer content will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentFile = null;
+
+        async function loadFiles() {
+            try {
+                const response = await fetch('/api/dwg/list');
+                if (!response.ok) throw new Error('Failed to load files');
+                
+                const files = await response.json();
+                displayFiles(files);
+            } catch (error) {
+                document.getElementById('fileListContainer').innerHTML = 
+                    `<div class="error">Error loading files: ${error.message}</div>`;
+            }
+        }
+
+        function displayFiles(files) {
+            const container = document.getElementById('fileListContainer');
+            
+            if (files.length === 0) {
+                container.innerHTML = '<p style="color: #666; padding: 20px;">No DWG files found. Please place DWG files in the /wwwroot/files directory.</p>';
+                return;
+            }
+
+            container.innerHTML = files.map(file => `
+                <div class="file-item" onclick="viewFile('${file.name}')">
+                    <div class="file-info">
+                        <div class="file-name">📄 ${file.name}</div>
+                        <div class="file-details">
+                            Size: ${formatFileSize(file.size)} | 
+                            Modified: ${new Date(file.modified).toLocaleString()}
+                        </div>
+                    </div>
+                    <button class="view-btn" onclick="event.stopPropagation(); viewFile('${file.name}')">
+                        View
+                    </button>
+                </div>
+            `).join('');
+        }
+
+        async function viewFile(fileName) {
+            currentFile = fileName;
+            const viewerContainer = document.getElementById('viewerContainer');
+            const viewerContent = document.getElementById('viewerContent');
+            const viewerTitle = document.getElementById('viewerTitle');
+            
+            viewerContainer.classList.add('active');
+            viewerTitle.textContent = `Viewing: ${fileName}`;
+            viewerContent.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading file information...</p></div>';
+
+            try {
+                // Get file info
+                const infoResponse = await fetch(`/api/dwg/info/${encodeURIComponent(fileName)}`);
+                if (!infoResponse.ok) throw new Error('Failed to get file info');
+                
+                const fileInfo = await infoResponse.json();
+                
+                // Display file information and download link
+                viewerContent.innerHTML = `
+                    <div class="dwg-info">
+                        <h3>📋 File Information</h3>
+                        <p><strong>File Name:</strong> ${fileInfo.name}</p>
+                        <p><strong>File Size:</strong> ${formatFileSize(fileInfo.size)}</p>
+                        <p><strong>Created:</strong> ${new Date(fileInfo.created).toLocaleString()}</p>
+                        <p><strong>Modified:</strong> ${new Date(fileInfo.modified).toLocaleString()}</p>
+                    </div>
+                    <div>
+                        <h3 style="margin-bottom: 15px; color: #333;">🔍 Anteprima Planimetria</h3>
+                        <div style="text-align: center; margin: 20px 0;">
+                            <img id="dwgPreview" src="/api/dwg/preview/${encodeURIComponent(fileName)}" 
+                                 alt="DWG Preview" 
+                                 style="max-width: 100%; height: auto; border: 2px solid #ddd; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"
+                                 onerror="this.style.display='none'; document.getElementById('previewError').style.display='block';">
+                            <div id="previewError" style="display: none; padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404;">
+                                <p><strong>⚠️ Impossibile generare l'anteprima</strong></p>
+                                <p>Il file potrebbe essere corrotto o in un formato non supportato. Puoi comunque scaricare il file DWG.</p>
+                            </div>
+                        </div>
+                        <div style="text-align: center; margin-top: 20px;">
+                            <a href="/files/${encodeURIComponent(fileName)}" class="download-link" download>
+                                ⬇️ Scarica File DWG
+                            </a>
+                        </div>
+                    </div>
+                `;
+            } catch (error) {
+                viewerContent.innerHTML = `
+                    <div class="error">
+                        Error loading file: ${error.message}
+                    </div>
+                `;
+            }
+        }
+
+        function closeViewer() {
+            document.getElementById('viewerContainer').classList.remove('active');
+            currentFile = null;
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // Load files on page load
+        loadFiles();
+    </script>
+</body>
+</html>
+

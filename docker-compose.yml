@@ -1,0 +1,17 @@
+services:
+  dwg-viewer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: dwg-viewer-app
+    ports:
+      - "8080:80"
+    volumes:
+      - ./wwwroot/files:/app/wwwroot/files:ro
+      - ./appartamento Ricciardi per ALE.dwg:/app/wwwroot/files/appartamento Ricciardi per ALE.dwg:ro
+      - ./wwwroot/cache:/app/wwwroot/cache
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:80
+    restart: unless-stopped
+
