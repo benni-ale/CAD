@@ -616,34 +616,311 @@
             buildingMeshes.forEach(mesh => scene3d.remove(mesh));
             buildingMeshes = [];
 
-            // Create simplified building structure
+            try {
+                // Load geometry data from backend
+                const geoResponse = await fetch(`/api/dwg/geometry/${encodeURIComponent(fileName)}`);
+                if (!geoResponse.ok) {
+                    throw new Error('Failed to load geometry data');
+                }
+
+                const geoData = await geoResponse.json();
+                
+                // Create floors based on real data
+                if (geoData.floors && geoData.floors.length > 0) {
+                    geoData.floors.forEach((floor) => {
+                        createFloor3D(floor, section);
+                    });
+                } else {
+                    // Fallback to simplified version
+                    createSimplifiedFloors(section);
+                }
+            } catch (error) {
+                console.error('Error loading geometry:', error);
+                // Fallback to simplified version
+                createSimplifiedFloors(section);
+            }
+        }
+
+        function createFloor3D(floorData, section) {
+            const floorY = floorData.y || 0;
+            const floorHeight = floorData.height || 3.0;
+            const color = floorData.color ? 
+                new THREE.Color(floorData.color.r, floorData.color.g, floorData.color.b) : 
+                0x4a90e2;
+
+            // Se abbiamo pareti reali dal DWG, usiamole
+            if (floorData.walls && floorData.walls.length > 0) {
+                createFloorFromRealWalls(floorData, floorY, floorHeight, color);
+            } else {
+                // Fallback a forma complessa
+                const shape = createComplexFloorShape(floorData.name, section);
+                
+                const extrudeSettings = {
+                    depth: 0.2,
+                    bevelEnabled: false
+                };
+
+                const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                const material = new THREE.MeshLambertMaterial({ 
+                    color: color,
+                    transparent: true,
+                    opacity: 0.8
+                });
+
+                const floorMesh = new THREE.Mesh(geometry, material);
+                floorMesh.position.y = floorY;
+                floorMesh.rotation.x = -Math.PI / 2;
+                floorMesh.receiveShadow = true;
+                scene3d.add(floorMesh);
+                buildingMeshes.push(floorMesh);
+
+                createWallsFromShape(shape, floorY, floorHeight);
+            }
+        }
+
+        function createFloorFromRealWalls(floorData, floorY, floorHeight, color) {
+            const walls = floorData.walls || [];
+            const wallThickness = 0.2;
+            
+            // Raccogli tutti i punti unici per creare il perimetro del piano
+            const allPoints = new Set();
+            walls.forEach(wall => {
+                const key1 = `${wall.start.x.toFixed(2)},${wall.start.y.toFixed(2)}`;
+                const key2 = `${wall.end.x.toFixed(2)},${wall.end.y.toFixed(2)}`;
+                allPoints.add(key1);
+                allPoints.add(key2);
+            });
+
+            // Crea le pareti reali
+            walls.forEach(wall => {
+                const start = wall.start;
+                const end = wall.end;
+                
+                const length = Math.sqrt(
+                    Math.pow(end.x - start.x, 2) + 
+                    Math.pow(end.y - start.y, 2)
+                );
+                
+                if (length > 0.01) { // Ignora pareti troppo corte
+                    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+                    const centerX = (start.x + end.x) / 2;
+                    const centerZ = (start.y + end.y) / 2;
+
+                    const wallGeometry = new THREE.BoxGeometry(length, floorHeight, wallThickness);
+                    const wallMaterial = new THREE.MeshLambertMaterial({ color: 0xcccccc });
+                    const wallMesh = new THREE.Mesh(wallGeometry, wallMaterial);
+                    
+                    wallMesh.position.set(centerX, floorY + floorHeight / 2, centerZ);
+                    wallMesh.rotation.y = angle;
+                    wallMesh.castShadow = true;
+                    wallMesh.receiveShadow = true;
+                    
+                    scene3d.add(wallMesh);
+                    buildingMeshes.push(wallMesh);
+                }
+            });
+
+            // Crea il piano basato sul perimetro delle pareti
+            if (walls.length > 0) {
+                const shape = createShapeFromWalls(walls);
+                if (shape) {
+                    const extrudeSettings = { depth: 0.2, bevelEnabled: false };
+                    const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                    const material = new THREE.MeshLambertMaterial({ 
+                        color: color,
+                        transparent: true,
+                        opacity: 0.7
+                    });
+
+                    const floorMesh = new THREE.Mesh(geometry, material);
+                    floorMesh.position.y = floorY;
+                    floorMesh.rotation.x = -Math.PI / 2;
+                    floorMesh.receiveShadow = true;
+                    scene3d.add(floorMesh);
+                    buildingMeshes.push(floorMesh);
+                }
+            }
+        }
+
+        function createShapeFromWalls(walls) {
+            if (walls.length === 0) return null;
+
+            try {
+                const shape = new THREE.Shape();
+                let firstPoint = true;
+                
+                // Trova il punto più in basso a sinistra come punto di partenza
+                let minX = Infinity, minY = Infinity;
+                walls.forEach(wall => {
+                    minX = Math.min(minX, wall.start.x, wall.end.x);
+                    minY = Math.min(minY, wall.start.y, wall.end.y);
+                });
+
+                // Costruisci il percorso seguendo le pareti
+                const visited = new Set();
+                let currentPoint = { x: minX, y: minY };
+                let foundStart = false;
+
+                // Trova il punto di partenza più vicino
+                walls.forEach(wall => {
+                    const dist1 = Math.sqrt(Math.pow(wall.start.x - minX, 2) + Math.pow(wall.start.y - minY, 2));
+                    const dist2 = Math.sqrt(Math.pow(wall.end.x - minX, 2) + Math.pow(wall.end.y - minY, 2));
+                    if (!foundStart && (dist1 < 1 || dist2 < 1)) {
+                        currentPoint = dist1 < dist2 ? wall.start : wall.end;
+                        foundStart = true;
+                    }
+                });
+
+                if (!foundStart && walls.length > 0) {
+                    currentPoint = walls[0].start;
+                }
+
+                // Inizia il percorso
+                shape.moveTo(currentPoint.x, currentPoint.y);
+                const startKey = `${currentPoint.x.toFixed(2)},${currentPoint.y.toFixed(2)}`;
+
+                // Segui le pareti per creare il perimetro
+                let iterations = 0;
+                const maxIterations = walls.length * 2;
+                
+                while (iterations < maxIterations) {
+                    let found = false;
+                    for (const wall of walls) {
+                        const key1 = `${wall.start.x.toFixed(2)},${wall.start.y.toFixed(2)}`;
+                        const key2 = `${wall.end.x.toFixed(2)},${wall.end.y.toFixed(2)}`;
+                        const currentKey = `${currentPoint.x.toFixed(2)},${currentPoint.y.toFixed(2)}`;
+                        
+                        if (currentKey === key1 && !visited.has(key2)) {
+                            currentPoint = wall.end;
+                            shape.lineTo(currentPoint.x, currentPoint.y);
+                            visited.add(key2);
+                            found = true;
+                            break;
+                        } else if (currentKey === key2 && !visited.has(key1)) {
+                            currentPoint = wall.start;
+                            shape.lineTo(currentPoint.x, currentPoint.y);
+                            visited.add(key1);
+                            found = true;
+                            break;
+                        }
+                    }
+                    
+                    const currentKey = `${currentPoint.x.toFixed(2)},${currentPoint.y.toFixed(2)}`;
+                    if (!found || currentKey === startKey) break;
+                    iterations++;
+                }
+
+                return shape;
+            } catch (error) {
+                console.error('Error creating shape from walls:', error);
+                return null;
+            }
+        }
+
+        function createComplexFloorShape(floorName, section) {
+            const shape = new THREE.Shape();
+            
+            // Create more complex shapes based on floor type and section
+            // These shapes approximate the actual floor plans from the DWG
+            if (floorName === 'PIANO TERZO') {
+                if (section === 'stato-di-fatto') {
+                    // STATO DI FATTO - Piano terzo: forma irregolare con protrusioni
+                    shape.moveTo(-9, -7);
+                    shape.lineTo(7, -7);
+                    shape.lineTo(7, 3);
+                    shape.lineTo(5, 3);
+                    shape.lineTo(5, 1);
+                    shape.lineTo(-1, 1);
+                    shape.lineTo(-1, 5);
+                    shape.lineTo(-5, 5);
+                    shape.lineTo(-5, 3);
+                    shape.lineTo(-9, 3);
+                    shape.lineTo(-9, -7);
+                } else {
+                    // PROGETTO - Piano terzo: forma più grande con scala a spirale
+                    shape.moveTo(-10, -8);
+                    shape.lineTo(8, -8);
+                    shape.lineTo(8, 4);
+                    shape.lineTo(6, 4);
+                    shape.lineTo(6, 2);
+                    shape.lineTo(-2, 2);
+                    shape.lineTo(-2, 6);
+                    shape.lineTo(-6, 6);
+                    shape.lineTo(-6, 4);
+                    shape.lineTo(-10, 4);
+                    shape.lineTo(-10, -8);
+                }
+            } else if (floorName === 'SOTTOTETTO') {
+                if (section === 'stato-di-fatto') {
+                    // STATO DI FATTO - Sottotetto: forma rettangolare più piccola
+                    shape.moveTo(-7, -5);
+                    shape.lineTo(5, -5);
+                    shape.lineTo(5, 5);
+                    shape.lineTo(-7, 5);
+                    shape.lineTo(-7, -5);
+                } else {
+                    // PROGETTO - Sottotetto: forma leggermente più grande
+                    shape.moveTo(-8, -6);
+                    shape.lineTo(6, -6);
+                    shape.lineTo(6, 6);
+                    shape.lineTo(-8, 6);
+                    shape.lineTo(-8, -6);
+                }
+            } else {
+                // Default rectangular
+                shape.moveTo(-6, -4);
+                shape.lineTo(6, -4);
+                shape.lineTo(6, 4);
+                shape.lineTo(-6, 4);
+                shape.lineTo(-6, -4);
+            }
+
+            return shape;
+        }
+
+        function createWallsFromShape(shape, floorY, wallHeight) {
+            const wallThickness = 0.2;
+            const points = shape.getPoints();
+            
+            // Create walls along shape perimeter
+            for (let i = 0; i < points.length; i++) {
+                const p1 = points[i];
+                const p2 = points[(i + 1) % points.length];
+                
+                const length = Math.sqrt(
+                    Math.pow(p2.x - p1.x, 2) + 
+                    Math.pow(p2.y - p1.y, 2)
+                );
+                
+                const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x);
+                const centerX = (p1.x + p2.x) / 2;
+                const centerZ = (p1.y + p2.y) / 2;
+
+                const wallGeometry = new THREE.BoxGeometry(length, wallHeight, wallThickness);
+                const wall = new THREE.Mesh(
+                    wallGeometry, 
+                    new THREE.MeshLambertMaterial({ color: 0xcccccc })
+                );
+                
+                wall.position.set(centerX, floorY + wallHeight / 2, centerZ);
+                wall.rotation.y = angle;
+                scene3d.add(wall);
+                buildingMeshes.push(wall);
+            }
+        }
+
+        function createSimplifiedFloors(section) {
+            // Fallback simplified version
             const floorHeight = 3.0;
             const floors = [
                 { name: 'PIANO TERZO', y: 0, color: 0x4a90e2 },
                 { name: 'SOTTOTETTO', y: floorHeight, color: 0x7b68ee }
             ];
 
-            floors.forEach((floor, index) => {
-                // Create floor plan as extruded shape
-                const shape = new THREE.Shape();
+            floors.forEach((floor) => {
+                const shape = createComplexFloorShape(floor.name, section);
                 
-                // Simplified rectangular floor plan
-                const width = section === 'stato-di-fatto' ? 12 : 14;
-                const depth = section === 'stato-di-fatto' ? 8 : 10;
-                const offsetX = section === 'stato-di-fatto' ? -6 : -7;
-                const offsetZ = section === 'stato-di-fatto' ? -4 : -5;
-
-                shape.moveTo(offsetX, offsetZ);
-                shape.lineTo(offsetX + width, offsetZ);
-                shape.lineTo(offsetX + width, offsetZ + depth);
-                shape.lineTo(offsetX, offsetZ + depth);
-                shape.lineTo(offsetX, offsetZ);
-
-                const extrudeSettings = {
-                    depth: 0.2,
-                    bevelEnabled: false
-                };
-
+                const extrudeSettings = { depth: 0.2, bevelEnabled: false };
                 const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
                 const material = new THREE.MeshLambertMaterial({ 
                     color: floor.color,
@@ -658,35 +935,7 @@
                 scene3d.add(floorMesh);
                 buildingMeshes.push(floorMesh);
 
-                // Add walls
-                const wallHeight = 2.8;
-                const wallThickness = 0.2;
-                
-                // Front wall
-                const frontWallGeometry = new THREE.BoxGeometry(width, wallHeight, wallThickness);
-                const frontWall = new THREE.Mesh(frontWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
-                frontWall.position.set(offsetX + width/2, floor.y + wallHeight/2, offsetZ);
-                scene3d.add(frontWall);
-                buildingMeshes.push(frontWall);
-
-                // Back wall
-                const backWall = new THREE.Mesh(frontWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
-                backWall.position.set(offsetX + width/2, floor.y + wallHeight/2, offsetZ + depth);
-                scene3d.add(backWall);
-                buildingMeshes.push(backWall);
-
-                // Left wall
-                const leftWallGeometry = new THREE.BoxGeometry(wallThickness, wallHeight, depth);
-                const leftWall = new THREE.Mesh(leftWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
-                leftWall.position.set(offsetX, floor.y + wallHeight/2, offsetZ + depth/2);
-                scene3d.add(leftWall);
-                buildingMeshes.push(leftWall);
-
-                // Right wall
-                const rightWall = new THREE.Mesh(leftWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
-                rightWall.position.set(offsetX + width, floor.y + wallHeight/2, offsetZ + depth/2);
-                scene3d.add(rightWall);
-                buildingMeshes.push(rightWall);
+                createWallsFromShape(shape, floor.y, 2.8);
             });
         }
 
