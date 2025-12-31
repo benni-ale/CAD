@@ -176,5 +176,131 @@ public class DwgController : ControllerBase
             return StatusCode(500, new { error = $"Failed to generate preview: {ex.Message}" });
         }
     }
+
+    [HttpGet("section/{fileName}/{section}")]
+    public IActionResult GetSection(string fileName, string section)
+    {
+        try
+        {
+            var filePath = Path.Combine(_environment.ContentRootPath, "wwwroot", "files", fileName);
+            
+            if (!System.IO.File.Exists(filePath))
+            {
+                return NotFound(new { error = "File not found" });
+            }
+
+            var cacheDir = Path.Combine(_environment.ContentRootPath, "wwwroot", "cache");
+            if (!Directory.Exists(cacheDir))
+            {
+                Directory.CreateDirectory(cacheDir);
+            }
+
+            var cacheFilePath = Path.Combine(cacheDir, $"{Path.GetFileNameWithoutExtension(fileName)}_{section}.png");
+            
+            if (System.IO.File.Exists(cacheFilePath))
+            {
+                var cacheFileInfo = new FileInfo(cacheFilePath);
+                var sourceFileInfo = new FileInfo(filePath);
+                
+                if (cacheFileInfo.LastWriteTime >= sourceFileInfo.LastWriteTime)
+                {
+                    return PhysicalFile(cacheFilePath, "image/png");
+                }
+            }
+
+            string tempFilePath = filePath;
+            string? tempFile = null;
+            
+            try
+            {
+                var tempDir = Path.Combine(Path.GetTempPath(), "dwg-viewer");
+                if (!Directory.Exists(tempDir))
+                {
+                    Directory.CreateDirectory(tempDir);
+                }
+                
+                tempFile = Path.Combine(tempDir, Path.GetFileName(filePath));
+                System.IO.File.Copy(filePath, tempFile, true);
+                tempFilePath = tempFile;
+            }
+            catch
+            {
+                tempFilePath = filePath;
+            }
+
+            try
+            {
+                using (var image = Image.Load(tempFilePath))
+                {
+                    var rasterizationOptions = new CadRasterizationOptions
+                    {
+                        PageWidth = 1600,
+                        PageHeight = 1600,
+                        BackgroundColor = Aspose.CAD.Color.White
+                    };
+
+                    // Per ora generiamo l'intera immagine, in futuro si potrebbero filtrare layer specifici
+                    var pngOptions = new PngOptions
+                    {
+                        VectorRasterizationOptions = rasterizationOptions
+                    };
+
+                    image.Save(cacheFilePath, pngOptions);
+                }
+            }
+            finally
+            {
+                if (tempFile != null && System.IO.File.Exists(tempFile))
+                {
+                    try
+                    {
+                        System.IO.File.Delete(tempFile);
+                    }
+                    catch { }
+                }
+            }
+
+            return PhysicalFile(cacheFilePath, "image/png");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error generating section preview for {FileName}, section {Section}", fileName, section);
+            return StatusCode(500, new { error = $"Failed to generate section preview: {ex.Message}" });
+        }
+    }
+
+    [HttpGet("geometry/{fileName}")]
+    public IActionResult GetGeometry(string fileName)
+    {
+        try
+        {
+            var filePath = Path.Combine(_environment.ContentRootPath, "wwwroot", "files", fileName);
+            
+            if (!System.IO.File.Exists(filePath))
+            {
+                return NotFound(new { error = "File not found" });
+            }
+
+            // Per ora restituiamo dati semplificati
+            // In futuro si potrebbero estrarre le entità reali dal DWG
+            var geometry = new
+            {
+                sections = new[]
+                {
+                    new { name = "stato-di-fatto", label = "STATO DI FATTO", floors = new[] { "PIANO TERZO", "SOTTOTETTO" } },
+                    new { name = "progetto", label = "PROGETTO", floors = new[] { "PIANO TERZO", "SOTTOTETTO" } }
+                },
+                defaultHeight = 3.0, // Altezza standard in metri
+                previewUrl = $"/api/dwg/preview/{Uri.EscapeDataString(fileName)}"
+            };
+
+            return Ok(geometry);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error getting geometry for {FileName}", fileName);
+            return StatusCode(500, new { error = $"Failed to get geometry: {ex.Message}" });
+        }
+    }
 }
 

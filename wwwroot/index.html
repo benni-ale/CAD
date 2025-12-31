@@ -264,7 +264,63 @@
         .zoom-btn:hover {
             background: #5568d3;
         }
+
+        .view-mode-btn {
+            background: #e9ecef;
+            color: #495057;
+            border: 2px solid #dee2e6;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+            flex: 1;
+        }
+
+        .view-mode-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: #667eea;
+        }
+
+        .view-mode-btn:hover {
+            background: #d0d7de;
+        }
+
+        .view-mode-btn.active:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #6a3d8f 100%);
+        }
+
+        .section-btn {
+            background: white;
+            color: #667eea;
+            border: 2px solid #667eea;
+            padding: 8px 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .section-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .section-btn:hover {
+            background: #f0f0ff;
+        }
+
+        .section-btn.active:hover {
+            background: linear-gradient(135deg, #5568d3 0%, #6a3d8f 100%);
+        }
+
+        #canvas3dContainer canvas {
+            border-radius: 8px;
+        }
     </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
 </head>
 <body>
     <div class="container">
@@ -363,21 +419,54 @@
                         <p><strong>Modified:</strong> ${new Date(fileInfo.modified).toLocaleString()}</p>
                     </div>
                     <div>
-                        <h3 style="margin-bottom: 15px; color: #333;">🔍 Anteprima Planimetria</h3>
-                        <div style="text-align: center; margin: 20px 0;">
-                            <img id="dwgPreview" src="/api/dwg/preview/${encodeURIComponent(fileName)}" 
-                                 alt="DWG Preview" 
-                                 style="max-width: 100%; height: auto; border: 2px solid #ddd; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"
-                                 onerror="this.style.display='none'; document.getElementById('previewError').style.display='block';">
-                            <div id="previewError" style="display: none; padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404;">
-                                <p><strong>⚠️ Impossibile generare l'anteprima</strong></p>
-                                <p>Il file potrebbe essere corrotto o in un formato non supportato. Puoi comunque scaricare il file DWG.</p>
+                        <div style="display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 2px solid #dee2e6; padding-bottom: 15px;">
+                            <button id="view2dBtn" class="view-mode-btn active" onclick="switchViewMode('2d')">
+                                📐 Vista 2D
+                            </button>
+                            <button id="view3dBtn" class="view-mode-btn" onclick="switchViewMode('3d')">
+                                🏗️ Vista 3D
+                            </button>
+                        </div>
+                        
+                        <div id="view2d">
+                            <h3 style="margin-bottom: 15px; color: #333;">🔍 Anteprima Planimetria</h3>
+                            <div style="text-align: center; margin: 20px 0;">
+                                <img id="dwgPreview" src="/api/dwg/preview/${encodeURIComponent(fileName)}" 
+                                     alt="DWG Preview" 
+                                     style="max-width: 100%; height: auto; border: 2px solid #ddd; border-radius: 8px; box-shadow: 0 4px 8px rgba(0,0,0,0.1);"
+                                     onerror="this.style.display='none'; document.getElementById('previewError').style.display='block';">
+                                <div id="previewError" style="display: none; padding: 20px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 6px; color: #856404;">
+                                    <p><strong>⚠️ Impossibile generare l'anteprima</strong></p>
+                                    <p>Il file potrebbe essere corrotto o in un formato non supportato. Puoi comunque scaricare il file DWG.</p>
+                                </div>
+                            </div>
+                            <div style="text-align: center; margin-top: 20px;">
+                                <a href="/files/${encodeURIComponent(fileName)}" class="download-link" download>
+                                    ⬇️ Scarica File DWG
+                                </a>
                             </div>
                         </div>
-                        <div style="text-align: center; margin-top: 20px;">
-                            <a href="/files/${encodeURIComponent(fileName)}" class="download-link" download>
-                                ⬇️ Scarica File DWG
-                            </a>
+                        
+                        <div id="view3d" style="display: none;">
+                            <h3 style="margin-bottom: 15px; color: #333;">🏗️ Visualizzazione 3D</h3>
+                            <div style="margin-bottom: 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;">
+                                <label style="font-weight: 600; color: #333;">Versione:</label>
+                                <button id="statoFattoBtn" class="section-btn active" onclick="switchSection('stato-di-fatto')">
+                                    📋 STATO DI FATTO
+                                </button>
+                                <button id="progettoBtn" class="section-btn" onclick="switchSection('progetto')">
+                                    ✏️ PROGETTO
+                                </button>
+                            </div>
+                            <div id="canvas3dContainer" style="width: 100%; height: 600px; border: 2px solid #ddd; border-radius: 8px; background: #f8f9fa; position: relative;">
+                                <div class="loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
+                                    <div class="spinner"></div>
+                                    <p>Caricamento visualizzazione 3D...</p>
+                                </div>
+                            </div>
+                            <div style="margin-top: 15px; padding: 15px; background: #e7f3ff; border-left: 4px solid #2196F3; border-radius: 4px;">
+                                <p style="color: #555; margin: 0;"><strong>💡 Controlli:</strong> Usa il mouse per ruotare, trascina per spostare, rotella per zoomare</p>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -401,6 +490,210 @@
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        // 3D Viewer variables
+        let scene3d, camera3d, renderer3d, controls3d;
+        let currentSection = 'stato-di-fatto';
+        let buildingMeshes = [];
+
+        function switchViewMode(mode) {
+            const view2d = document.getElementById('view2d');
+            const view3d = document.getElementById('view3d');
+            const btn2d = document.getElementById('view2dBtn');
+            const btn3d = document.getElementById('view3dBtn');
+
+            if (mode === '2d') {
+                view2d.style.display = 'block';
+                view3d.style.display = 'none';
+                btn2d.classList.add('active');
+                btn3d.classList.remove('active');
+                if (renderer3d) {
+                    renderer3d.setAnimationLoop(null);
+                }
+            } else {
+                view2d.style.display = 'none';
+                view3d.style.display = 'block';
+                btn2d.classList.remove('active');
+                btn3d.classList.add('active');
+                if (currentFile) {
+                    init3DViewer(currentFile);
+                }
+            }
+        }
+
+        function switchSection(section) {
+            currentSection = section;
+            const statoBtn = document.getElementById('statoFattoBtn');
+            const progettoBtn = document.getElementById('progettoBtn');
+
+            if (section === 'stato-di-fatto') {
+                statoBtn.classList.add('active');
+                progettoBtn.classList.remove('active');
+            } else {
+                progettoBtn.classList.add('active');
+                statoBtn.classList.remove('active');
+            }
+
+            if (renderer3d && currentFile) {
+                update3DView(section);
+            }
+        }
+
+        async function init3DViewer(fileName) {
+            const container = document.getElementById('canvas3dContainer');
+            container.innerHTML = '<div class="loading" style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);"><div class="spinner"></div><p>Caricamento visualizzazione 3D...</p></div>';
+
+            try {
+                // Initialize Three.js
+                const width = container.clientWidth;
+                const height = 600;
+
+                scene3d = new THREE.Scene();
+                scene3d.background = new THREE.Color(0xf0f0f0);
+
+                camera3d = new THREE.PerspectiveCamera(45, width / height, 0.1, 1000);
+                camera3d.position.set(20, 15, 20);
+                camera3d.lookAt(0, 0, 0);
+
+                renderer3d = new THREE.WebGLRenderer({ antialias: true });
+                renderer3d.setSize(width, height);
+                renderer3d.shadowMap.enabled = true;
+                container.innerHTML = '';
+                container.appendChild(renderer3d.domElement);
+
+                // Add controls
+                try {
+                    if (typeof THREE.OrbitControls !== 'undefined') {
+                        controls3d = new THREE.OrbitControls(camera3d, renderer3d.domElement);
+                        controls3d.enableDamping = true;
+                        controls3d.dampingFactor = 0.05;
+                        controls3d.minDistance = 5;
+                        controls3d.maxDistance = 50;
+                    }
+                } catch (e) {
+                    console.warn('OrbitControls not available, using fallback controls');
+                    controls3d = null;
+                }
+
+                // Add lights
+                const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+                scene3d.add(ambientLight);
+
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                directionalLight.position.set(10, 20, 10);
+                directionalLight.castShadow = true;
+                scene3d.add(directionalLight);
+
+                // Add grid
+                const gridHelper = new THREE.GridHelper(30, 30, 0x888888, 0xcccccc);
+                scene3d.add(gridHelper);
+
+                // Add axes helper
+                const axesHelper = new THREE.AxesHelper(5);
+                scene3d.add(axesHelper);
+
+                // Create building from plan
+                await create3DBuilding(fileName, currentSection);
+
+                // Animation loop
+                function animate() {
+                    requestAnimationFrame(animate);
+                    if (controls3d && controls3d.update) {
+                        controls3d.update();
+                    }
+                    renderer3d.render(scene3d, camera3d);
+                }
+                animate();
+
+            } catch (error) {
+                container.innerHTML = `<div class="error">Errore nel caricamento 3D: ${error.message}</div>`;
+            }
+        }
+
+        async function create3DBuilding(fileName, section) {
+            // Clear existing meshes
+            buildingMeshes.forEach(mesh => scene3d.remove(mesh));
+            buildingMeshes = [];
+
+            // Create simplified building structure
+            const floorHeight = 3.0;
+            const floors = [
+                { name: 'PIANO TERZO', y: 0, color: 0x4a90e2 },
+                { name: 'SOTTOTETTO', y: floorHeight, color: 0x7b68ee }
+            ];
+
+            floors.forEach((floor, index) => {
+                // Create floor plan as extruded shape
+                const shape = new THREE.Shape();
+                
+                // Simplified rectangular floor plan
+                const width = section === 'stato-di-fatto' ? 12 : 14;
+                const depth = section === 'stato-di-fatto' ? 8 : 10;
+                const offsetX = section === 'stato-di-fatto' ? -6 : -7;
+                const offsetZ = section === 'stato-di-fatto' ? -4 : -5;
+
+                shape.moveTo(offsetX, offsetZ);
+                shape.lineTo(offsetX + width, offsetZ);
+                shape.lineTo(offsetX + width, offsetZ + depth);
+                shape.lineTo(offsetX, offsetZ + depth);
+                shape.lineTo(offsetX, offsetZ);
+
+                const extrudeSettings = {
+                    depth: 0.2,
+                    bevelEnabled: false
+                };
+
+                const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+                const material = new THREE.MeshLambertMaterial({ 
+                    color: floor.color,
+                    transparent: true,
+                    opacity: 0.7
+                });
+
+                const floorMesh = new THREE.Mesh(geometry, material);
+                floorMesh.position.y = floor.y;
+                floorMesh.rotation.x = -Math.PI / 2;
+                floorMesh.receiveShadow = true;
+                scene3d.add(floorMesh);
+                buildingMeshes.push(floorMesh);
+
+                // Add walls
+                const wallHeight = 2.8;
+                const wallThickness = 0.2;
+                
+                // Front wall
+                const frontWallGeometry = new THREE.BoxGeometry(width, wallHeight, wallThickness);
+                const frontWall = new THREE.Mesh(frontWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
+                frontWall.position.set(offsetX + width/2, floor.y + wallHeight/2, offsetZ);
+                scene3d.add(frontWall);
+                buildingMeshes.push(frontWall);
+
+                // Back wall
+                const backWall = new THREE.Mesh(frontWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
+                backWall.position.set(offsetX + width/2, floor.y + wallHeight/2, offsetZ + depth);
+                scene3d.add(backWall);
+                buildingMeshes.push(backWall);
+
+                // Left wall
+                const leftWallGeometry = new THREE.BoxGeometry(wallThickness, wallHeight, depth);
+                const leftWall = new THREE.Mesh(leftWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
+                leftWall.position.set(offsetX, floor.y + wallHeight/2, offsetZ + depth/2);
+                scene3d.add(leftWall);
+                buildingMeshes.push(leftWall);
+
+                // Right wall
+                const rightWall = new THREE.Mesh(leftWallGeometry, new THREE.MeshLambertMaterial({ color: 0xcccccc }));
+                rightWall.position.set(offsetX + width, floor.y + wallHeight/2, offsetZ + depth/2);
+                scene3d.add(rightWall);
+                buildingMeshes.push(rightWall);
+            });
+        }
+
+        function update3DView(section) {
+            if (currentFile) {
+                create3DBuilding(currentFile, section);
+            }
         }
 
         // Load files on page load
